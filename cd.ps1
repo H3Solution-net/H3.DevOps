@@ -1,4 +1,5 @@
 param ($pool_name, $site_name, $packagepath,$github_token,$org,$repo,$tag)
+$download_path = "C:\DevopsReleases"
 $base64_token = [System.Convert]:: ToBase64String([char[]]$github_token)
 $headers=@{ 'Authorization' = 'Basic {0}' -f $base64_token}
 $headers.Add('Accept','application/json')
@@ -10,7 +11,7 @@ $objects = $wr.Content | ConvertFrom-Json
 
 $download = $objects.assets.url;
 $zip_file = "$download_path/$tag.zip"
-If(!(test-path $download_path))
+If(!(Test-path $download_path))
 {
       New-Item -ItemType Directory -Force -Path $download_path
 }
