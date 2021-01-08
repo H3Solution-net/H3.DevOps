@@ -57,6 +57,9 @@ else {
     Write-Output "Site: '$site_name' exists"
 }
 
+Write-Output "Stopping site: $site_name"
+Stop-WebSite $site_name
+
 Write-Output "Deleting folder items of $packagepath" 
 Remove-Item $packagepath\* -Recurse -Force
 
@@ -64,6 +67,6 @@ Write-Output "Extracting release to $packagepath"
 Add-Type -Assembly "System.IO.Compression.Filesystem"
 [io.compression.zipfile]::ExtractToDirectory($zip_file, $packagepath)
 
-Write-Output "Restarting site: $site_name"
-Stop-WebSite $site_name
+Write-Output "starting site: $site_name"
+
 Start-WebSite $site_name
