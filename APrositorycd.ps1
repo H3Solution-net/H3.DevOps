@@ -51,7 +51,7 @@ else {
 #check if the site exists
 if(!(Test-Path IIS:\Sites\$site_name  ))
 {
-   New-Website -Name $site_name -ApplicationPool $pool_name -Force -PhysicalPath $packagepath
+   New-Website -Name $site_name -ApplicationPool $pool_name -Force -PhysicalPath $packagepath -HostHeader $site_name
    Write-Output "Site: '$site_name' created"
 }
 else {
