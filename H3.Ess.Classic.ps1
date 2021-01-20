@@ -1,5 +1,5 @@
 param ($pool_name, $site_name, $packagepath,$github_token,$org,$repo,$tag)
-$download_path = "C:\DevopsReleases\APrository"
+$download_path = "C:\DevopsReleases\ESS"
 $base64_token = [System.Convert]:: ToBase64String([char[]]$github_token)
 $headers=@{ 'Authorization' = 'Basic {0}' -f $base64_token}
 $headers.Add('Accept','application/json')
