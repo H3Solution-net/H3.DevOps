@@ -1,30 +1,59 @@
-param ($pool_name, $site_name, $packagepath,$github_token,$org,$repo,$tag)
-$devops_path = "C:\Devops"
-$download_path = "C:\Devops\Download"
-$extract_path = "C:\Devops\Extract"
-$releases_path = "C:\Devops\Releases"
-$backup_path = "C:\Devops\Backup"
 
-Invoke-Check-Devops-Paths $devops_path -paths $download_path,$extract_path,$releases_path,$backup_path
-$zip_file = Get-Release-Asset $download_path $github_token $org $repo $tag
-$release_extract_path = ExtractFile($zip_file,$extract_path,$tag)
-Invoke-Check-IIS-Site $pool_name $packagepath $site_name
-Invoke-Backup-And-Replace $packagepath $extract_path $backup_path $tag
-RestartSite($site_name)
+param(
+    [Parameter(Mandatory = $true, Position = 0)]
+    [string]$pool_name,
 
+    [Parameter(Mandatory = $true, Position = 1)]
+    [string]$site_name,
+
+    [Parameter(Mandatory = $true, Position = 2)]
+    [string]$packagepath,
+
+    [Parameter(Mandatory = $true, Position = 3)]
+    [string]$github_token,
+
+    [Parameter(Mandatory = $true, Position = 4)]
+    [string]$org,
+
+    [Parameter(Mandatory = $true, Position = 5)]
+    [string]$repo,
+
+    [Parameter(Mandatory = $true, Position = 6)]
+    [string]$tag
+
+)
 function RestartSite ($site_name) {
     Write-Output "Restarting site: $site_name"
     Stop-WebSite $site_name
     Start-WebSite $site_name
 }
-function ExtractFile ($zip_file,$extract_path,$tag) {
-    $release_extract_path = "$extract_path\$tag"
-    Write-Output "Extracting release to $release_extract_path"
-    Add-Type -Assembly "System.IO.Compression.Filesystem"
-    [io.compression.zipfile]::ExtractToDirectory($zip_file, $release_extract_path)
-    return $release_extract_path
+function ExtractFile {
+    param([string]$zip_file,[string]$extract_path, [string]$tag)
+    $dest = "$extract_path"
+    Write-Host "Extracting file $zip_file at destination: $dest"
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+
+    # get an array of FileInfo objects for zip files in the $zip_file directory and loop through
+    Get-ChildItem $zip_file -Filter *.zip -File | ForEach-Object {
+        # unpacks each zip in directory to destination folder
+        # the automatic variable '$_' here represents a single FileInfo object, each file at a time
+
+        # Get the destination folder for the zip file. Create the folder if it does not exist.
+        $destination = Join-Path -Path $dest -ChildPath $_.BaseName  # $_.BaseName does not include the extension
+
+        # Check if the folder already exists
+        if ((Test-Path $destination -PathType Container)) {
+            Delete-Dir -path $destination
+        }
+            # create the destination folder
+            New-Item -Path $destination -ItemType Directory -Force | Out-Null
+
+            # unzip the file
+            Write-Host "UnZipping - $($_.FullName)"
+            [System.IO.Compression.ZipFile]::ExtractToDirectory($_.FullName, $destination)
+    }
 }
-function ZipFile( $zipfilename, $sourcedir )
+function ZipFile($zipfilename, $sourcedir)
 {
    Add-Type -Assembly System.IO.Compression.FileSystem
    $compressionLevel = [System.IO.Compression.CompressionLevel]::Optimal
@@ -34,22 +63,29 @@ function ZipFile( $zipfilename, $sourcedir )
 function Invoke-Backup-And-Replace
 {
     param([string]$packagepath,[string]$release_extract_path,[string]$backup_path,[string]$tag)
+    Write-Host "Starting taking backup & replacing release"
+    # packagepath path must contain atleast single file
+    CreateEmptyFile -path $packagepath
 
     $release_backup_path = "$backup_path\$tag"
     Clear-Path -path $release_backup_path
-
     $rfc = get-ChildItem -File -Recurse -Path $release_extract_path
     $source = get-ChildItem -File -Recurse -Path $packagepath
+    
+    # Write-Host $rfc  
+    Write-Host $source
     # check for new files that need to be copied
     compare-Object -DifferenceObject $rfc -ReferenceObject $source -Property Name -PassThru | foreach-Object {
         #copy source to destination
         $rfc_path = $_.DirectoryName -replace [regex]::Escape($release_extract_path),$packagepath
+        Write-Host "Adding $rfc_path"
         if ((test-Path -Path $rfc_path) -eq $false) { new-Item -ItemType Directory -Path $rfc_path | out-Null}
         copy-Item -Force -Path $_.FullName -Destination $rfc_path
     }
     # check for same files that need to be replaced
     compare-Object -DifferenceObject $rfc -ReferenceObject $source -ExcludeDifferent -IncludeEqual -Property Name -PassThru | foreach-Object {
         # copy destination to BACKUP
+        Write-Host "Relacing $_"
         $backup_dest = $_.DirectoryName -replace [regex]::Escape($packagepath),$release_backup_path
         # create directory, including intermediate paths, if necessary
         if ((test-Path -Path $backup_dest) -eq $false) { new-Item -ItemType Directory -Path $backup_dest | out-Null}
@@ -59,6 +95,7 @@ function Invoke-Backup-And-Replace
         $rfc_path = $_.fullname -replace [regex]::Escape($packagepath),$release_extract_path
         copy-Item -Force -Path $rfc_path -Destination $_.FullName
     }
+    Write-Host "zipping backup folder: $backup_path"
     ZipFile("$release_backup_path.zip",$backup_path)
     Remove-Item -Recurse -Force $release_backup_path 
 }
@@ -75,13 +112,13 @@ function Get-Release-Asset
     # Write-Output $objects
 
     $download_url = $objects.assets.url;
-    $zip_file = "$download_path\$tag.zip"
     If(!(Test-path $download_path))
     {
         New-Item -ItemType Directory -Force -Path $download_path
     }
-
-    Write-Host "Dowloading release $tag"
+    $zip_file = "$download_path\$tag.zip"
+    Write-Host $zip_file
+    Write-Host "Dowloading release at $zip_file"
     Write-Host "Asset Url: $download_url"
     $headers.Remove('Accept')
     $headers.Add('Accept','application/octet-stream')
@@ -131,32 +168,70 @@ function Invoke-Check-IIS-Site
 function Clear-Path
 {
     param([string]$path)
-    if ((test-Path -Path $releases_extract_path) -eq $true) 
+    if ((test-Path -Path $path) -eq $true) 
     {
-        Write-Output "Deleting folder items of $releases_extract_path" 
-        Remove-Item $releases_extract_path\* -Recurse -Force
+        Write-Output "Deleting folder items of $path" 
+        Remove-Item $path\* -Recurse -Force
     }else {
-        new-Item -ItemType Directory -Path $releases_extract_path | out-Null  
+        new-Item -ItemType Directory -Path $path | out-Null  
     }
  
+}
+function CreateEmptyFile {
+    param (
+        [string]$path
+    )
+    $fileToCheck = "$path\empty.txt"
+    Write-Host $fileToCheck
+    if (!(Test-Path $fileToCheck -PathType leaf))
+    {
+        Write-Host "Creating empty file"
+        New-Item -Path $fileToCheck -ItemType File -Force
+    }
+    
+}
+function Delete-Dir([string]$path){
+    if ((test-Path -Path $path) -eq $true) 
+    {
+        Write-Output "Deleting folder items of $path" 
+        Remove-Item $path -Recurse -Force
+    }
 }
 function Invoke-Check-Devops-Paths
 {
     param([string]$devops_path,[string[]]$paths)
+    Write-Host "Checking Devops Paths"
     if ((test-Path -Path $devops_path) -eq $false) 
     { 
+        Write-Host "DevOps path didnt exist, creating now...."
         new-Item -ItemType Directory -Path $devops_path | out-Null
         foreach ($path in $paths)
         {
-            Invoke-Check-Path $path
+            Write-Host $path
+            Invoke-Check-Path($path)
         }
     }
  
 }
-function Invoke-Check-Path
+function Invoke-Check-Path($path)
 {
-    param([string]$path)
-    Write-Output "Creating directory $releases_extract_path"
-    if ((test-Path -Path $releases_extract_path) -eq $false) { new-Item -ItemType Directory -Path $releases_extract_path | out-Null }
+    Write-Output "Creating directory $path"
+    if ((test-Path -Path $path) -eq $false) { new-Item -ItemType Directory -Path $path | out-Null }
  
 }
+
+$devops_path = "c:\Devops"
+$download_path = "C:\Devops\Download"
+$extract_path = "c:\Devops\Extract"
+$releases_path = "c:\Devops\Releases"
+$backup_path = "c:\Devops\Backup"
+Write-Host $packagepath
+
+Invoke-Check-Devops-Paths $devops_path -paths $download_path,$extract_path,$releases_path,$backup_path
+$zip_file = Get-Release-Asset $download_path $github_token $org $repo $tag
+ExtractFile $zip_file -extract_path $extract_path -tag $tag
+Invoke-Check-IIS-Site $pool_name $packagepath $site_name
+Stop-WebSite $site_name
+Invoke-Backup-And-Replace -packagepath $packagepath -release_extract_path "$extract_path\$tag" -backup_path $backup_path -tag $tag
+Start-WebSite $site_name
+# RestartSite($site_name)
