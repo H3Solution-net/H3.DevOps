@@ -53,12 +53,21 @@ function ExtractFile {
             [System.IO.Compression.ZipFile]::ExtractToDirectory($_.FullName, $destination)
     }
 }
-function ZipFile($zipfilename, $sourcedir)
+function ZipBackupFile
 {
+   param([string]$zipfilename,[string]$sourcedir)
+   if ((test-Path $zipfilename -PathType Leaf) -eq $true) { Remove-Item -Force $zipfilename  | out-Null}
+   ZipFile -zipfilename $zipfilename -sourcedir $sourcedir
+   Remove-Item -Recurse -Force $sourcedir 
+}
+function ZipFile
+{
+   param([string]$zipfilename,[string]$sourcedir)
    Add-Type -Assembly System.IO.Compression.FileSystem
    $compressionLevel = [System.IO.Compression.CompressionLevel]::Optimal
-   [System.IO.Compression.ZipFile]::CreateFromDirectory($sourcedir,
-        $zipfilename, $compressionLevel, $false)
+   $dir = [System.IO.DirectoryInfo]$sourcedir
+   [System.IO.Compression.ZipFile]::CreateFromDirectory($dir.FullName,
+        $zipfilename, $compressionLevel, $true)
 }
 function Invoke-Backup-And-Replace
 {
@@ -69,21 +78,24 @@ function Invoke-Backup-And-Replace
 
     $release_backup_path = "$backup_path\$tag"
     Clear-Path -path $release_backup_path
-    $rfc = get-ChildItem -File -Recurse -Path $release_extract_path
-    $source = get-ChildItem -File -Recurse -Path $packagepath
+    $extract_files = get-ChildItem -File -Recurse -Path $release_extract_path
+    $prod_files = get-ChildItem -File -Recurse -Path $packagepath
     
-    # Write-Host $rfc  
-    Write-Host $source
+    # Write-Host $extract_files  
+    Write-Host "Adding new Files......"
     # check for new files that need to be copied
-    compare-Object -DifferenceObject $rfc -ReferenceObject $source -Property Name -PassThru | foreach-Object {
-        #copy source to destination
-        $rfc_path = $_.DirectoryName -replace [regex]::Escape($release_extract_path),$packagepath
-        Write-Host "Adding $rfc_path"
-        if ((test-Path -Path $rfc_path) -eq $false) { new-Item -ItemType Directory -Path $rfc_path | out-Null}
-        copy-Item -Force -Path $_.FullName -Destination $rfc_path
+    compare-Object -DifferenceObject $extract_files -ReferenceObject $prod_files -Property Name -PassThru | foreach-Object {
+        #copy prod_files to destination
+        $new_file = $_;
+        $prod_path = $new_file.DirectoryName -replace [regex]::Escape($release_extract_path),$packagepath
+        Write-Host "Adding $new_file"
+        if ((test-Path -Path $prod_path) -eq $false) { new-Item -ItemType Directory -Path $prod_path | out-Null}
+        copy-Item -Force -Path $new_file.FullName -Destination $prod_path -ErrorAction SilentlyContinue
+        $prod_files = @($prod_files | Where-Object { $_.FullName -ne $new_file.FullName })
     }
+    Write-Host "Replacing Common Files......"
     # check for same files that need to be replaced
-    compare-Object -DifferenceObject $rfc -ReferenceObject $source -ExcludeDifferent -IncludeEqual -Property Name -PassThru | foreach-Object {
+    compare-Object -DifferenceObject $extract_files -ReferenceObject $prod_files -ExcludeDifferent -IncludeEqual -Property Name -PassThru | foreach-Object {
         # copy destination to BACKUP
         Write-Host "Relacing $_"
         $backup_dest = $_.DirectoryName -replace [regex]::Escape($packagepath),$release_backup_path
@@ -91,13 +103,10 @@ function Invoke-Backup-And-Replace
         if ((test-Path -Path $backup_dest) -eq $false) { new-Item -ItemType Directory -Path $backup_dest | out-Null}
         copy-Item -Force -Path $_.FullName -Destination $backup_dest
 
-        #copy source to destination
+        #copy prod_files to destination
         $rfc_path = $_.fullname -replace [regex]::Escape($packagepath),$release_extract_path
         copy-Item -Force -Path $rfc_path -Destination $_.FullName
     }
-    Write-Host "zipping backup folder: $backup_path"
-    ZipFile("$release_backup_path.zip",$backup_path)
-    Remove-Item -Recurse -Force $release_backup_path 
 }
 function Get-Release-Asset
 {
@@ -181,14 +190,11 @@ function CreateEmptyFile {
     param (
         [string]$path
     )
-    $fileToCheck = "$path\empty.txt"
-    Write-Host $fileToCheck
-    if (!(Test-Path $fileToCheck -PathType leaf))
-    {
-        Write-Host "Creating empty file"
-        New-Item -Path $fileToCheck -ItemType File -Force
-    }
-    
+    $directoryInfo = Get-ChildItem $path | Measure-Object
+    if($directoryInfo.count -eq 0){
+        $emptyFile = "$path\empty.txt"
+        New-Item -Path $emptyFile -ItemType File -Force
+    } 
 }
 function Delete-Dir([string]$path){
     if ((test-Path -Path $path) -eq $true) 
@@ -233,5 +239,11 @@ ExtractFile $zip_file -extract_path $extract_path -tag $tag
 Invoke-Check-IIS-Site $pool_name $packagepath $site_name
 Stop-WebSite $site_name
 Invoke-Backup-And-Replace -packagepath $packagepath -release_extract_path "$extract_path\$tag" -backup_path $backup_path -tag $tag
-Start-WebSite $site_name
+
+$backup_zip = "$backup_path\$tag.zip"
+$release_backup_path = "$backup_path\$tag";
+Write-Host "zipping backup folder: $release_backup_path"
+ZipBackupFile -zipfilename $backup_zip -sourcedir $release_backup_path
+# Remove-Item -Recurse -Force $release_backup_path 
+# Start-WebSite $site_name
 # RestartSite($site_name)
