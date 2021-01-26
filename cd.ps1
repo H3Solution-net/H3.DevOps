@@ -97,7 +97,7 @@ function Invoke-Backup-And-Replace {
         #copy prod_files to destination
         $new_file = $_;
         $prod_path = $new_file.DirectoryName -replace [regex]::Escape($release_extract_path), $packagepath
-        Write-Host "Adding $new_file"
+        Write-Host "Adding" $new_file.FullName
         if ((test-Path -Path $prod_path) -eq $false) { new-Item -ItemType Directory -Path $prod_path | out-Null }
         copy-Item -Force -Path $new_file.FullName -Destination $prod_path -ErrorAction SilentlyContinue
 
@@ -107,7 +107,7 @@ function Invoke-Backup-And-Replace {
     # check for same files that need to be replaced
     compare-Object -DifferenceObject $extract_files -ReferenceObject $prod_files -ExcludeDifferent -IncludeEqual -Property Name -PassThru | foreach-Object {
         # copy destination to BACKUP
-        Write-Host "Relacing $_"
+        Write-Host "Relacing" $_.FullName
         $backup_dest = $_.DirectoryName -replace [regex]::Escape($packagepath), $release_backup_path
         # create directory, including intermediate paths, if necessary
         if ((test-Path -Path $backup_dest) -eq $false) { new-Item -ItemType Directory -Path $backup_dest | out-Null }
@@ -207,32 +207,25 @@ function Delete-Dir([string]$path) {
     }
 }
 function Invoke-Check-Devops-Paths {
-    param([string]$devops_path, [string[]]$paths)
+    param([string[]]$paths)
     Write-Host "Checking Devops Paths"
-    if ((test-Path -Path $devops_path) -eq $false) { 
-        Write-Host "DevOps path didnt exist, creating now...."
-        new-Item -ItemType Directory -Path $devops_path | out-Null
-        foreach ($path in $paths) {
-            Write-Host $path
-            Invoke-Check-Path($path)
-        }
+    foreach ($path in $paths) {
+        Invoke-Check-Path($path)
+    }
+}
+function Invoke-Check-Path($path) {
+    if ((test-Path -Path $path) -eq $false) {
+        Write-Output "Creating directory $path"
+        new-Item -ItemType Directory -Path $path | out-Null 
     }
  
 }
-function Invoke-Check-Path($path) {
-    Write-Output "Creating directory $path"
-    if ((test-Path -Path $path) -eq $false) { new-Item -ItemType Directory -Path $path | out-Null }
- 
-}
 
-$devops_path = "c:\Devops"
-$download_path = "C:\Devops\Download"
-$extract_path = "c:\Devops\Extract"
-$releases_path = "c:\Devops\Releases"
-$backup_path = "c:\Devops\Backup"
-Write-Host $packagepath
+$download_path = "c:\Devops\$org\$repo\Download"
+$extract_path = "c:\Devops\$org\$repo\Extract"
+$backup_path = "c:\Devops\$org\$repo\Backup"
 
-Invoke-Check-Devops-Paths $devops_path -paths $download_path, $extract_path, $releases_path, $backup_path
+Invoke-Check-Devops-Paths -paths $download_path, $extract_path, $backup_path
 $zip_file = Get-Release-Asset $download_path $github_token $org $repo $tag
 ExtractFile $zip_file -extract_path $extract_path -tag $tag
 Invoke-Check-IIS-Site $pool_name $packagepath $site_name
