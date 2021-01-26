@@ -22,7 +22,8 @@ param(
     [string]$tag
 
 )
-function RestartSite ($site_name) {
+function RestartSite {
+    param([string]$site_name)
     Write-Output "Restarting site: $site_name"
     Stop-WebSite $site_name
     Start-WebSite $site_name
@@ -242,6 +243,4 @@ $backup_zip = "$backup_path\$tag.zip"
 $release_backup_path = "$backup_path\$tag";
 Write-Host "zipping backup folder: $release_backup_path"
 ZipBackupFile -zipfilename $backup_zip -sourcedir $release_backup_path
-# Remove-Item -Recurse -Force $release_backup_path 
-# Start-WebSite $site_name
-# RestartSite($site_name)
+# RestartSite -site_name $site_name
