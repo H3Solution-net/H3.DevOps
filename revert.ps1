@@ -58,6 +58,7 @@ function Invoke-Backup-And-Replace {
     param([string]$packagepath, [string]$release_extract_path)
     Write-Host "Starting taking backup & replacing release"
     # packagepath path must contain atleast single file
+    CreateEmptyFile -path $release_extract_path
     $extract_files = get-ChildItem -File -Recurse -Path $release_extract_path
     $prod_files = get-ChildItem -File -Recurse -Path $packagepath
     
