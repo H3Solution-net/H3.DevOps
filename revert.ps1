@@ -12,6 +12,16 @@ param(
     [string]$tag
 
 )
+function CreateEmptyFile {
+    param (
+        [string]$path
+    )
+    $directoryInfo = Get-ChildItem $path | Measure-Object
+    if ($directoryInfo.count -eq 0) {
+        $emptyFile = "$path\empty.txt"
+        New-Item -Path $emptyFile -ItemType File -Force
+    } 
+}
 function Delete-Dir([string]$path) {
     if ((test-Path -Path $path) -eq $true) {
         Write-Output "Deleting folder items of $path" 

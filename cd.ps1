@@ -19,7 +19,10 @@ param(
     [string]$repo,
 
     [Parameter(Mandatory = $true, Position = 6)]
-    [string]$tag
+    [string]$tag,
+
+    [Parameter(Mandatory = $false, Position = 7)]
+    [bool]$skip_backup = $true
 
 )
 function RestartSite {
@@ -230,8 +233,12 @@ $zip_file = Get-Release-Asset $download_path $github_token $org $repo $tag
 ExtractFile $zip_file -extract_path $extract_path -tag $tag
 Invoke-Check-IIS-Site $pool_name $packagepath $site_name
 Invoke-Backup-And-Replace -packagepath $packagepath -release_extract_path "$extract_path\$tag" -backup_path $backup_path -tag $tag
-$backup_zip = "$backup_path\$tag.zip"
-$release_backup_path = "$backup_path\$tag";
-Write-Host "zipping backup folder: $release_backup_path"
-ZipBackupFile -zipfilename $backup_zip -sourcedir $release_backup_path
+
+if ($skip_backup -eq $false) {
+    $backup_zip = "$backup_path\$tag.zip"
+    $release_backup_path = "$backup_path\$tag";
+    Write-Host "zipping backup folder: $release_backup_path"
+    ZipBackupFile -zipfilename $backup_zip -sourcedir $release_backup_path
+}
+
 # RestartSite -site_name $site_name
