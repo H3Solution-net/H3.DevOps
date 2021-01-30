@@ -118,7 +118,7 @@ function Invoke-Backup-And-Replace {
 
         #copy prod_files to destination
         $rfc_path = $_.fullname -replace [regex]::Escape($packagepath), $release_extract_path
-        copy-Item -Force -Path $rfc_path -Destination $_.FullName
+        copy-Item -Force -Path $rfc_path -Destination $_.FullName -ErrorAction SilentlyContinue
     }
 }
 function Get-Release-Asset {
