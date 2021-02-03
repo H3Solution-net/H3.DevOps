@@ -90,10 +90,10 @@ function Invoke-Backup-And-Replace {
 
     $release_backup_path = "$backup_path\$tag"
     $release_backup_zip = "$release_backup_path.zip"
-    $skip_backup = $false;
+    $script:skip_backup = $false;
     # if backup is already taken place skip the backup otherwise it will overwrite our backup
     if ((test-Path -Path $release_backup_zip) -eq $true) {
-        $skip_backup = $true
+        $script:skip_backup = $true
         Write-Host "Skipping release backup"
     }
     $extract_files = get-ChildItem -File -Recurse -Path $release_extract_path
@@ -117,7 +117,7 @@ function Invoke-Backup-And-Replace {
     compare-Object -DifferenceObject $extract_files -ReferenceObject $prod_files -ExcludeDifferent -IncludeEqual -Property Name -PassThru | foreach-Object {
         # copy destination to BACKUP
         Write-Host "Relacing" $_.FullName
-        if($skip_backup -eq $false){
+        if($script:skip_backup -eq $false){
             $backup_dest = $_.DirectoryName -replace [regex]::Escape($packagepath), $release_backup_path
             # create directory, including intermediate paths, if necessary
             if ((test-Path -Path $backup_dest) -eq $false) { new-Item -ItemType Directory -Path $backup_dest | out-Null }
